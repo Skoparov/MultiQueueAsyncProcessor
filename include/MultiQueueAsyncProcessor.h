@@ -5,6 +5,7 @@
 #include <mutex>
 #include <memory>
 #include <thread>
+#include <atomic>
 #include <cassert>
 #include <optional>
 #include <shared_mutex>
@@ -22,7 +23,7 @@ struct IConsumer
 
 namespace detail{
 
-template<class QueueId, class Value, class QueuesUnderlyingContainer>
+template<class QueueId, class Value, class UnderlyingContainer>
 class Queue
 {
 public:
@@ -48,7 +49,6 @@ public:
         Dequeue()
     {
         std::lock_guard l{ m_mutex };
-
         if (m_queue.empty() || !m_consumer)
             return std::nullopt;
 
@@ -59,13 +59,13 @@ public:
 
     size_t Size() const
     {
-        std::lock_guard l{ m_mutex };
+        std::shared_lock l{ m_mutex };
         return m_queue.size();
     }
 
     bool Empty()
     {
-        std::lock_guard l{ m_mutex };
+        std::shared_lock l{ m_mutex };
         return m_queue.empty();
     }
 
@@ -82,17 +82,17 @@ public:
 
     bool HasConsumer() const
     {
-        std::lock_guard l{ m_mutex };
+        std::shared_lock l{ m_mutex };
         return m_consumer != nullptr;
     }
 
 private:
     const QueueId m_id;
     const size_t m_maxSize;
-    std::queue<Value, QueuesUnderlyingContainer> m_queue;
+    std::queue<Value, UnderlyingContainer> m_queue;
     std::shared_ptr<IConsumer<QueueId,Value>> m_consumer;
 
-    mutable std::mutex m_mutex;
+    mutable std::shared_mutex m_mutex;
 };
 
 template<class QueueId, class Value, class QueuesUnderlyingContainer>
@@ -105,7 +105,7 @@ private:
     struct QueueData
     {
         std::shared_ptr<Queue> queue;
-        typename std::list<std::shared_ptr<Queue>>::iterator processQueueIt;
+        typename std::list<std::shared_ptr<Queue>>::iterator dispatchQueueIt;
     };
 
 public:
@@ -132,7 +132,7 @@ public:
             return false;
 
         if (data.queue->HasConsumer() &&
-            data.processQueueIt == m_queuesToDispatch.end())
+            data.dispatchQueueIt == m_queuesToDispatch.end())
         {
             AddToDispatchQueue(data);
         }
@@ -140,13 +140,14 @@ public:
         return true;
     }
 
-    std::shared_ptr<Queue> GetQueueToDispatch()
+    std::optional<std::shared_ptr<Queue>> GetQueueToDispatch()
     {
         auto queue{ m_queuesToDispatch.front() };
-        if (queue->Size() <= 1)
+        if (queue->Empty())
         {
             QueueData& data{ m_queuesById[queue->GetId()] };
             RemoveFromDispatchQueue(data);
+            return std::nullopt;
         }
 
         return queue;
@@ -221,15 +222,15 @@ private:
     void AddToDispatchQueue(QueueData& data)
     {
         m_queuesToDispatch.push_back(data.queue);
-        data.processQueueIt = std::prev(m_queuesToDispatch.end());
+        data.dispatchQueueIt = std::prev(m_queuesToDispatch.end());
     }
 
     void RemoveFromDispatchQueue(QueueData& data)
     {
-        if (data.processQueueIt != m_queuesToDispatch.end())
+        if (data.dispatchQueueIt != m_queuesToDispatch.end())
         {
-            m_queuesToDispatch.erase(data.processQueueIt);
-            data.processQueueIt = m_queuesToDispatch.end();
+            m_queuesToDispatch.erase(data.dispatchQueueIt);
+            data.dispatchQueueIt = m_queuesToDispatch.end();
         }
     }
 
@@ -330,7 +331,8 @@ private:
         m_workers.clear();
     }
 
-    std::shared_ptr<typename QueuesManager::Queue> GetQueueToDispatch()
+    std::optional<std::shared_ptr<typename QueuesManager::Queue>>
+        GetQueueToDispatch()
     {
         std::unique_lock l{ m_stateMutex };
         m_waitingForQueuesToDispatchCv.wait(l, [&]{
@@ -354,14 +356,14 @@ private:
                 //  to maintain consumption order, we'll have to limit the
                 //  number of workers to 1 or somehow shard queues by worker ids
                 auto queue{ GetQueueToDispatch() };
-                while (!m_stop)
+                while (!m_stop && queue)
                 {
-                    auto valueAndConsumer{ queue->Dequeue() };
+                    auto valueAndConsumer{ (*queue)->Dequeue() };
                     if (!valueAndConsumer)
                         break;
 
                     auto& [value, consumer] = *valueAndConsumer;
-                    consumer->Consume(queue->GetId(), std::move(value));
+                    consumer->Consume((*queue)->GetId(), std::move(value));
                 }
             }
             catch (...)

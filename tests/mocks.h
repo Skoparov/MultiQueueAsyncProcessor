@@ -1,11 +1,13 @@
 #pragma once
+
 #include <MultiQueueAsyncProcessor.h>
 
 namespace multi_queue_async_processor::tests::mocks{
 
 template<class QueueId, class Value>
-struct MockConsumer : public IConsumer<QueueId, Value>
+class MockConsumer : public IConsumer<QueueId, Value>
 {
+public:
     explicit MockConsumer(bool storeConsumed = true) noexcept
         : m_storeConsumed{ storeConsumed }
     {}
@@ -20,7 +22,7 @@ struct MockConsumer : public IConsumer<QueueId, Value>
             m_consumedVals.emplace_back(id, val);
         }
 
-        m_valueConsumedCv.notify_one();
+        m_waitTillConsumed.notify_one();
     }
 
     template<class... T>
@@ -29,7 +31,7 @@ struct MockConsumer : public IConsumer<QueueId, Value>
         std::chrono::duration<T...> timeout)
     {
         std::unique_lock l{ m_consumedValsMutex };
-        return m_valueConsumedCv.wait_for(l, timeout, [&]{
+        return m_waitTillConsumed.wait_for(l, timeout, [&]{
             return m_consumedNum == itemsConsumed;
         });
     }
@@ -48,17 +50,19 @@ struct MockConsumer : public IConsumer<QueueId, Value>
 private:
     const bool m_storeConsumed;
     std::mutex m_consumedValsMutex;
-    std::condition_variable m_valueConsumedCv;
+    std::condition_variable m_waitTillConsumed;
 
     size_t m_consumedNum{ 0 };
     std::vector<std::pair<QueueId, Value>> m_consumedVals;
 };
 
 template<class QueueId, class Value, class QueuesUnderlyingContainer>
-struct MockQueueManager
+class MockQueueManager
 {
+public:
     using Queue = detail::Queue<QueueId, Value, QueuesUnderlyingContainer>;
 
+public:
     template<class T>
     bool Enqueue(const QueueId& id, T&& value)
     {

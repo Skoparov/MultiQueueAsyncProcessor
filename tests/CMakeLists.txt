@@ -8,6 +8,8 @@ ENDIF(Boost_FOUND)
 
 add_executable(
     MultiQueueAsyncProcessorTests
+    mocks.h
+    helpers.h
     tests.cpp)
 
 TARGET_LINK_LIBRARIES(
