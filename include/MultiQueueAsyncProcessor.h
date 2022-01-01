@@ -29,7 +29,7 @@ class Queue
 public:
     Queue(const QueueId& id, size_t maxSize)
         : m_id{ id }
-        , m_maxSize(maxSize)
+        , m_maxSize{ maxSize }
     {
         assert(m_maxSize != 0);
     }
@@ -37,7 +37,7 @@ public:
     template<class T>
     bool Enqueue(T&& value)
     {
-        std::lock_guard l{ m_mutex };
+        std::lock_guard l{ m_dataMutex };
         if (m_queue.size() == m_maxSize)
             return false;
 
@@ -48,7 +48,7 @@ public:
     std::optional<std::pair<Value, std::shared_ptr<IConsumer<QueueId, Value>>>>
         Dequeue()
     {
-        std::lock_guard l{ m_mutex };
+        std::lock_guard l{ m_dataMutex };
         if (m_queue.empty() || !m_consumer)
             return std::nullopt;
 
@@ -59,13 +59,13 @@ public:
 
     size_t Size() const
     {
-        std::shared_lock l{ m_mutex };
+        std::shared_lock l{ m_dataMutex };
         return m_queue.size();
     }
 
     bool Empty()
     {
-        std::shared_lock l{ m_mutex };
+        std::shared_lock l{ m_dataMutex };
         return m_queue.empty();
     }
 
@@ -76,13 +76,13 @@ public:
 
     void ResetConsumer(std::shared_ptr<IConsumer<QueueId,Value>> consumer = {})
     {
-        std::lock_guard l{ m_mutex };
+        std::lock_guard l{ m_dataMutex };
         m_consumer = std::move(consumer);
     }
 
     bool HasConsumer() const
     {
-        std::shared_lock l{ m_mutex };
+        std::shared_lock l{ m_dataMutex };
         return m_consumer != nullptr;
     }
 
@@ -92,7 +92,7 @@ private:
     std::queue<Value, UnderlyingContainer> m_queue;
     std::shared_ptr<IConsumer<QueueId,Value>> m_consumer;
 
-    mutable std::shared_mutex m_mutex;
+    mutable std::shared_mutex m_dataMutex;
 };
 
 template<class QueueId, class Value, class QueuesUnderlyingContainer>
@@ -282,7 +282,7 @@ public:
     template<class T>
     bool Enqueue(const QueueId& id, T&& value)
     {
-        std::lock_guard l{ m_stateMutex };
+        std::lock_guard l{ m_queueManagerMutex };
         if (m_stop || !m_queuesManager->Enqueue(id, std::forward<T>(value)))
             return false;
 
@@ -294,13 +294,13 @@ public:
         const QueueId& id,
         std::shared_ptr<IConsumer<QueueId, Value>> consumer)
     {
-        std::lock_guard l{ m_stateMutex };
+        std::lock_guard l{ m_queueManagerMutex };
         return m_queuesManager->AddConsumer(id, std::move(consumer));
     }
 
     void RemoveConsumer(const QueueId& id)
     {
-        std::lock_guard l{ m_stateMutex };
+        std::lock_guard l{ m_queueManagerMutex };
         m_queuesManager->RemoveConsumer(id);
     }
 
@@ -317,12 +317,9 @@ private:
 
     void StopWorkers()
     {
-        {
-            std::lock_guard l{ m_stateMutex };
-            m_stop = true;
-        }
-
+        m_stop = true;
         m_waitingForQueuesToDispatchCv.notify_all();
+
         for (auto& thread : m_workers)
         {
             thread.join();
@@ -334,7 +331,7 @@ private:
     std::optional<std::shared_ptr<typename QueuesManager::Queue>>
         GetQueueToDispatch()
     {
-        std::unique_lock l{ m_stateMutex };
+        std::unique_lock l{ m_queueManagerMutex };
         m_waitingForQueuesToDispatchCv.wait(l, [&]{
             return m_queuesManager->HasQueueToDispatch() || m_stop;
         });
@@ -353,8 +350,8 @@ private:
             {
                 // Having multiple workers may lead to values being consumed
                 // out of order (kind of like RabbitMq for example). If we need
-                //  to maintain consumption order, we'll have to limit the
-                //  number of workers to 1 or somehow shard queues by worker ids
+                // to maintain strict consumption order, we'll have to limit the
+                // number of workers to 1 or somehow shard queues by worker ids
                 auto queue{ GetQueueToDispatch() };
                 while (!m_stop && queue)
                 {
@@ -379,7 +376,7 @@ private:
     std::atomic_bool m_stop{ false };
     std::vector<std::thread> m_workers;
 
-    mutable std::mutex m_stateMutex;
+    mutable std::mutex m_queueManagerMutex;
     std::condition_variable m_waitingForQueuesToDispatchCv;
 };
 

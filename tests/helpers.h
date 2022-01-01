@@ -13,7 +13,7 @@ using QueuesManager
     = detail::QueuesManager<QueueId, Value, QueueUnderlyingContainer>;
 using MockConsumer = mocks::MockConsumer<QueueId, Value>;
 using MockQueueManager
-    = mocks::MockQueueManager<QueueId, Value, QueueUnderlyingContainer>;
+    = mocks::MockQueuesManager<QueueId, Value, QueueUnderlyingContainer>;
 using Processor
     = detail::MultiQueueAsyncProcessor<QueueId, Value, MockQueueManager>;
 
@@ -57,9 +57,6 @@ auto CreateProcessorAndMockQueueManager(size_t threadsNum)
     );
 }
 
-template<class>
-constexpr bool DependentFalse{ false };
-
 template<class T>
 T GetTestVal()
 {
@@ -73,7 +70,7 @@ T GetTestVal()
     }
     else
     {
-        static_assert(DependentFalse<T>);
+        static_assert(!"Unhandled key type");
     }
 }
 
@@ -93,7 +90,7 @@ T GetTestKey(size_t id)
     }
     else
     {
-        static_assert(DependentFalse<T>);
+        static_assert(!"Unhandled value type");
     }
 }
 

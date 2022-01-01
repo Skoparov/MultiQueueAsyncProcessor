@@ -56,9 +56,16 @@ BOOST_AUTO_TEST_CASE(Queue_EnqueueDequeue)
 
 BOOST_AUTO_TEST_CASE(QueuesManager_Create)
 {
-    BOOST_REQUIRE_THROW((QueuesManager{ 0, 1 }), std::invalid_argument);
-    BOOST_REQUIRE_THROW((QueuesManager{ 1, 0 }), std::invalid_argument);
-    BOOST_REQUIRE_NO_THROW((QueuesManager{ 1, 1 }));
+    BOOST_REQUIRE_THROW(
+        (QueuesManager{ 0 /* maxQueueSize */, 1 /* maxQueuesNum */ }),
+         std::invalid_argument);
+
+    BOOST_REQUIRE_THROW(
+        (QueuesManager{ 1 /* maxQueueSize */, 0 /* maxQueuesNum */ }),
+         std::invalid_argument);
+
+    BOOST_REQUIRE_NO_THROW(
+        (QueuesManager{ 1 /* maxQueueSize */, 1 /* maxQueuesNum */ }));
 }
 
 BOOST_AUTO_TEST_CASE(QueuesManager_SetRemoveConsumer)
@@ -162,8 +169,7 @@ BOOST_AUTO_TEST_CASE(MultiQueueAsyncProcessor_AddRemoveConsumers)
     BOOST_REQUIRE(!manager->ContainsConsumer(1_Id, consumer));
 }
 
-template<class QueueId>
-void TestDispatch(const QueueId& id1, const QueueId& id2, const QueueId& id3)
+BOOST_AUTO_TEST_CASE(MultiQueueAsyncProcessor_ValuesDispatch)
 {
     constexpr std::chrono::milliseconds timeout{ 1000 };
     MultiQueueAsyncProcessor<QueueId, Value> processor
@@ -178,35 +184,65 @@ void TestDispatch(const QueueId& id1, const QueueId& id2, const QueueId& id3)
     auto consumer2{ std::make_shared<Consumer>() };
     auto consumer3{ std::make_shared<Consumer>() };
 
-    processor.Enqueue(id1, 1);
-    processor.Enqueue(id2, 1);
+    processor.Enqueue(1_Id, 1);
+    processor.Enqueue(2_Id, 1);
 
-    processor.AddConsumer(id1, consumer1);
-    processor.AddConsumer(id2, consumer2);
-    processor.AddConsumer(id3, consumer3);
-    processor.RemoveConsumer(id3);
+    processor.AddConsumer(1_Id, consumer1);
+    processor.AddConsumer(2_Id, consumer2);
+    processor.AddConsumer(3_Id, consumer3);
+    processor.RemoveConsumer(3_Id);
 
-    processor.Enqueue(id1, 2);
-    processor.Enqueue(id2, 2);
-    processor.Enqueue(id3, 2);
+    processor.Enqueue(1_Id, 2);
+    processor.Enqueue(2_Id, 2);
+    processor.Enqueue(3_Id, 2);
 
     bool isConsumed1{ consumer1->WaitTillConsumed(2, timeout) };
     bool isConsumed2{ consumer2->WaitTillConsumed(2, timeout) };
 
     BOOST_REQUIRE(isConsumed1);
-    RequireConsumedEq(consumer1->GetConsumedVals()[0], id1, Value{ 1 });
-    RequireConsumedEq(consumer1->GetConsumedVals()[1], id1, Value{ 2 });
+    RequireConsumedEq(consumer1->GetConsumedVals()[0], 1_Id, Value{ 1 });
+    RequireConsumedEq(consumer1->GetConsumedVals()[1], 1_Id, Value{ 2 });
 
     BOOST_REQUIRE(isConsumed2);
-    RequireConsumedEq(consumer2->GetConsumedVals()[0], id2, 1);
-    RequireConsumedEq(consumer2->GetConsumedVals()[1], id2, 2);
+    RequireConsumedEq(consumer2->GetConsumedVals()[0], 2_Id, 1);
+    RequireConsumedEq(consumer2->GetConsumedVals()[1], 2_Id, 2);
 
     BOOST_REQUIRE(consumer3->GetConsumedVals().empty());
 }
 
-BOOST_AUTO_TEST_CASE(MultiQueueAsyncProcessor_ValuesDispatch)
+BOOST_AUTO_TEST_CASE(MultiQueueAsyncProcessor_OneConsumerMultipleQueues)
 {
-    TestDispatch<QueueId>(1_Id, 2_Id, 3_Id);
+    constexpr std::chrono::milliseconds timeout{ 1000 };
+    MultiQueueAsyncProcessor<QueueId, Value> processor
+    {
+        1, /* threadsNum */
+        4, /* maxQueueSize */
+        2 /* maxQueuesNum */
+    };
+
+    using Consumer = mocks::MockConsumer<QueueId, Value>;
+    auto consumer{ std::make_shared<Consumer>() };
+
+    processor.Enqueue(1_Id, 1);
+    processor.Enqueue(2_Id, 1);
+
+    processor.AddConsumer(1_Id, consumer);
+    processor.AddConsumer(2_Id, consumer);
+
+    processor.Enqueue(1_Id, 2);
+    processor.Enqueue(2_Id, 2);
+
+    bool isConsumed{ consumer->WaitTillConsumed(4, timeout) };
+
+    BOOST_REQUIRE(isConsumed);
+    auto consumedVals{ consumer->GetConsumedVals() };
+    BOOST_REQUIRE_EQUAL(consumedVals.size(), 4);
+
+    std::sort(consumedVals.begin(), consumedVals.end());
+    BOOST_REQUIRE(consumedVals[0] == std::make_pair(1_Id, Value{ 1 }));
+    BOOST_REQUIRE(consumedVals[1] == std::make_pair(1_Id, Value{ 2 }));
+    BOOST_REQUIRE(consumedVals[2] == std::make_pair(2_Id, Value{ 1 }));
+    BOOST_REQUIRE(consumedVals[3] == std::make_pair(2_Id, Value{ 2 }));
 }
 
 template<class QueueId, class Value>
@@ -264,47 +300,47 @@ void TestHeavyLoad(size_t queuesNum, size_t valsPerQueue)
         (queuesNum * valsPerQueue) / msPassed.count() * 1000 };
 
     BOOST_TEST_MESSAGE(
-        "Queues: " << queuesNum
+        "Queues/Consumers: " << queuesNum
         << ", vals per queue: " << valsPerQueue
         << ", total enqueues: " << queuesNum * valsPerQueue
         << ", avg speed: " << processedPerSec << "/sec"
         << ", time: " << msPassed.count() << " ms");
 }
 
-BOOST_AUTO_TEST_CASE(MultiQueueAsyncProcessor_HeavyLoad_QueuesGrowth)
+BOOST_AUTO_TEST_CASE(MultiQueueAsyncProcessor_HeavyLoad_QueuesNumGrowth)
 {
     constexpr size_t valsPerQueue{ 1000 };
 
-    // 5.000.000/10.000.000/15.000.000
+    // 5.000.000/10.000.000/15.000.000 total enqueues
     auto queueNums = { 5000, 10000, 15000 };
 
-    BOOST_TEST_MESSAGE("Strings...");
+    BOOST_TEST_MESSAGE("Strings:");
     for (size_t queuesNum : queueNums)
     {
         TestHeavyLoad<std::string, std::string>(queuesNum, valsPerQueue);
     }
 
-    BOOST_TEST_MESSAGE("Ints...");
+    BOOST_TEST_MESSAGE("Ints:");
     for (size_t queuesNum : queueNums)
     {
         TestHeavyLoad<int, int>(queuesNum, valsPerQueue);
     }
 }
 
-BOOST_AUTO_TEST_CASE(MultiQueueAsyncProcessor_HeavyLoad_ValsGrowth)
+BOOST_AUTO_TEST_CASE(MultiQueueAsyncProcessor_HeavyLoad_ValsPerQueueNumGrowth)
 {
     constexpr size_t queuesNum{ 100 };
 
-    // 5.000.000/10.000.000/15.000.000
+    // 5.000.000/10.000.000/15.000.000 total enqueues
     auto valsPerQueues = { 50000, 100000, 150000 };
 
-    BOOST_TEST_MESSAGE("Strings...");
+    BOOST_TEST_MESSAGE("Strings:");
     for (size_t valsPerQueue : valsPerQueues)
     {
         TestHeavyLoad<std::string, std::string>(queuesNum, valsPerQueue);
     }
 
-    BOOST_TEST_MESSAGE("Ints...");
+    BOOST_TEST_MESSAGE("Ints:");
     for (size_t valsPerQueue : valsPerQueues)
     {
         TestHeavyLoad<int, int>(queuesNum, valsPerQueue);

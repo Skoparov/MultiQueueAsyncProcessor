@@ -25,10 +25,10 @@ public:
         m_waitTillConsumed.notify_one();
     }
 
-    template<class... T>
+    template<class Rep, class Period>
     bool WaitTillConsumed(
         size_t itemsConsumed,
-        std::chrono::duration<T...> timeout)
+        std::chrono::duration<Rep, Period> timeout)
     {
         std::unique_lock l{ m_consumedValsMutex };
         return m_waitTillConsumed.wait_for(l, timeout, [&]{
@@ -57,7 +57,7 @@ private:
 };
 
 template<class QueueId, class Value, class QueuesUnderlyingContainer>
-class MockQueueManager
+class MockQueuesManager
 {
 public:
     using Queue = detail::Queue<QueueId, Value, QueuesUnderlyingContainer>;
