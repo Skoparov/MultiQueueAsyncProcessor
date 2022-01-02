@@ -99,13 +99,13 @@ template<class QueueId, class Value, class QueuesUnderlyingContainer>
 class QueuesManager
 {
 public:
-    using Queue = Queue<QueueId, Value, QueuesUnderlyingContainer>;
+    using QueueType = Queue<QueueId, Value, QueuesUnderlyingContainer>;
 
 private:
     struct QueueData
     {
-        std::shared_ptr<Queue> queue;
-        typename std::list<std::shared_ptr<Queue>>::iterator dispatchQueueIt;
+        std::shared_ptr<QueueType> queue;
+        typename std::list<std::shared_ptr<QueueType>>::iterator dispatchQueueIt;
     };
 
 public:
@@ -140,7 +140,7 @@ public:
         return true;
     }
 
-    std::optional<std::shared_ptr<Queue>> GetQueueToDispatch()
+    std::optional<std::shared_ptr<QueueType>> GetQueueToDispatch()
     {
         auto queue{ m_queuesToDispatch.front() };
         if (queue->Empty())
@@ -211,7 +211,7 @@ private:
                 id,
                 QueueData
                 {
-                    std::make_shared<Queue>(id, m_maxQueueSize),
+                    std::make_shared<QueueType>(id, m_maxQueueSize),
                     m_queuesToDispatch.end()
                 });
         }
@@ -237,7 +237,7 @@ private:
 private:
     const size_t m_maxQueueSize;
     const size_t m_maxQueuesNum;
-    std::list<std::shared_ptr<Queue>> m_queuesToDispatch;
+    std::list<std::shared_ptr<QueueType>> m_queuesToDispatch;
     std::unordered_map<QueueId, QueueData> m_queuesById;
 };
 
@@ -328,7 +328,7 @@ private:
         m_workers.clear();
     }
 
-    std::optional<std::shared_ptr<typename QueuesManager::Queue>>
+    std::optional<std::shared_ptr<typename QueuesManager::QueueType>>
         GetQueueToDispatch()
     {
         std::unique_lock l{ m_queueManagerMutex };
@@ -337,7 +337,7 @@ private:
         });
 
         if (m_stop)
-            return nullptr;
+            return std::nullopt;
 
         return m_queuesManager->GetQueueToDispatch();
     }

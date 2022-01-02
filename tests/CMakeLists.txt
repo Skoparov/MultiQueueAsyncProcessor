@@ -1,5 +1,5 @@
 set(Boost_USE_STATIC_LIBS ON)
-find_package(Boost 1.77.0 COMPONENTS system thread unit_test_framework REQUIRED)
+find_package(Boost 1.71.0 COMPONENTS system thread unit_test_framework REQUIRED)
 
 IF(Boost_FOUND)
     INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIRS})

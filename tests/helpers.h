@@ -57,6 +57,9 @@ auto CreateProcessorAndMockQueueManager(size_t threadsNum)
     );
 }
 
+template<class>
+constexpr bool DependentFalse{ false };
+
 template<class T>
 T GetTestVal()
 {
@@ -71,7 +74,7 @@ T GetTestVal()
     }
     else
     {
-        static_assert(!"Unhandled key type");
+        static_assert(DependentFalse<T>, "Unhandled key type");
     }
 }
 
@@ -97,7 +100,7 @@ T GetTestQueueId(size_t seed)
     }
     else
     {
-        static_assert(!"Unhandled value type");
+        static_assert(DependentFalse<T>, "Unhandled value type");
     }
 }
 

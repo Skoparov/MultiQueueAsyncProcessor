@@ -19,7 +19,7 @@ public:
         ++m_consumedNum;
         if (m_storeConsumed)
         {
-            m_consumedVals.emplace_back(id, val);
+            m_consumedVals.emplace_back(id, std::move(val));
         }
 
         m_waitTillConsumed.notify_one();
@@ -60,7 +60,7 @@ template<class QueueId, class Value, class QueuesUnderlyingContainer>
 class MockQueuesManager
 {
 public:
-    using Queue = detail::Queue<QueueId, Value, QueuesUnderlyingContainer>;
+    using QueueType = detail::Queue<QueueId, Value, QueuesUnderlyingContainer>;
 
 public:
     template<class T>
@@ -73,7 +73,7 @@ public:
         return true;
     }
 
-    std::shared_ptr<Queue> GetQueueToDispatch()
+    std::shared_ptr<QueueType> GetQueueToDispatch()
     {
         return {};
     }
@@ -87,12 +87,11 @@ public:
         const QueueId& id,
         std::shared_ptr<IConsumer<QueueId, Value>> consumer)
     {
-        if (m_addConsumers)
-        {
-            m_consumers[id] = std::move(consumer);
-        }
+        if (!m_addConsumers)
+            return false;
 
-        return m_addConsumers;
+        m_consumers[id] = std::move(consumer);
+        return true;
     }
 
     void RemoveConsumer(const QueueId& id)
