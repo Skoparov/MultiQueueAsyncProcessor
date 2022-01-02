@@ -66,7 +66,8 @@ T GetTestVal()
     }
     else if constexpr(std::is_same_v<T, std::string>)
     {
-        return "ololololololololololololololololololololololo";
+        constexpr size_t valueLen{ 10 };
+        return std::string(valueLen, '.');
     }
     else
     {
@@ -75,18 +76,24 @@ T GetTestVal()
 }
 
 template<class T>
-T GetTestKey(size_t id)
+T GetTestQueueId(size_t seed)
 {
     if constexpr(std::is_integral_v<T>)
     {
-        if (id > std::numeric_limits<T>::max())
-            throw std::invalid_argument{ "Key out of bounds" };
+        if (seed > std::numeric_limits<T>::max())
+            throw std::invalid_argument{ "Id out of bounds" };
 
-        return static_cast<T>(id);
+        return static_cast<T>(seed);
     }
     else if constexpr(std::is_same_v<T, std::string>)
     {
-        return std::to_string(id);
+        constexpr size_t idFixedLen{ 10 };
+        std::string id{ std::to_string(seed) };
+        if (id.length() > idFixedLen)
+            throw std::out_of_range{ "Id is too long" };
+
+        size_t leadingZerosNum{ idFixedLen - id.length() };
+        return std::string(leadingZerosNum, '0') + std::move(id);
     }
     else
     {

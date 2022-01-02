@@ -10,6 +10,7 @@ add_executable(
     MultiQueueAsyncProcessorTests
     mocks.h
     helpers.h
+    test_params.h
     tests.cpp)
 
 TARGET_LINK_LIBRARIES(

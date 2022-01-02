@@ -283,7 +283,7 @@ public:
     bool Enqueue(const QueueId& id, T&& value)
     {
         std::lock_guard l{ m_queueManagerMutex };
-        if (m_stop || !m_queuesManager->Enqueue(id, std::forward<T>(value)))
+        if (!m_queuesManager->Enqueue(id, std::forward<T>(value)))
             return false;
 
         m_waitingForQueuesToDispatchCv.notify_one();

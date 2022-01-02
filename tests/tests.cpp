@@ -1,6 +1,7 @@
 #define BOOST_TEST_MODULE MultiQueueAsyncProcessorTests
 
 #include "helpers.h"
+#include "test_params.h"
 #include <boost/asio/post.hpp>
 #include <boost/asio/thread_pool.hpp>
 
@@ -246,7 +247,7 @@ BOOST_AUTO_TEST_CASE(MultiQueueAsyncProcessor_OneConsumerMultipleQueues)
 }
 
 template<class QueueId, class Value>
-void TestHeavyLoad(size_t queuesNum, size_t valsPerQueue)
+std::chrono::milliseconds TestHeavyLoad(size_t queuesNum, size_t valsPerQueue)
 {
     MultiQueueAsyncProcessor<QueueId, Value> processor
     {
@@ -261,7 +262,7 @@ void TestHeavyLoad(size_t queuesNum, size_t valsPerQueue)
     std::vector<QueueId> ids;
     for (size_t id{ 0 }; id < queuesNum; ++id)
     {
-        ids.push_back(GetTestKey<QueueId>(id));
+        ids.push_back(GetTestQueueId<QueueId>(id));
         consumers.push_back(
             std::make_shared<Consumer>(false /* storeConsumed */));
 
@@ -296,54 +297,77 @@ void TestHeavyLoad(size_t queuesNum, size_t valsPerQueue)
     auto msPassed{ std::chrono::duration_cast<std::chrono::milliseconds>(
         end - start) };
 
+    return msPassed;
+}
+
+template<class QueueId, class Value>
+void TestHeavyLoadAverage(size_t queuesNum, size_t valsPerQueue, size_t runs)
+{
+    std::chrono::milliseconds averageTime{ 0 };
+    for (size_t run{ 0 }; run < runs; ++run)
+    {
+        BOOST_TEST_MESSAGE("Running " << run + 1 << "/" << runs << "...");
+        averageTime += TestHeavyLoad<QueueId, Value>(queuesNum, valsPerQueue);
+    }
+
+    averageTime /= runs;
     uint64_t processedPerSec{
-        (queuesNum * valsPerQueue) / msPassed.count() * 1000 };
+        (queuesNum * valsPerQueue) / averageTime.count() * 1000 };
 
     BOOST_TEST_MESSAGE(
         "Queues/Consumers: " << queuesNum
         << ", vals per queue: " << valsPerQueue
         << ", total enqueues: " << queuesNum * valsPerQueue
         << ", avg speed: " << processedPerSec << "/sec"
-        << ", time: " << msPassed.count() << " ms");
+        << ", time: " << averageTime.count() << " ms"
+        << ", runs: " << runs);
 }
 
 BOOST_AUTO_TEST_CASE(MultiQueueAsyncProcessor_HeavyLoad_QueuesNumGrowth)
 {
+    uint64_t runs{ GetTestParams().PerfAvgRuns() };
     constexpr size_t valsPerQueue{ 1000 };
 
     // 5.000.000/10.000.000/15.000.000 total enqueues
     auto queueNums = { 5000, 10000, 15000 };
 
-    BOOST_TEST_MESSAGE("Strings:");
+    BOOST_TEST_MESSAGE("Strings, " << runs << " runs:");
     for (size_t queuesNum : queueNums)
     {
-        TestHeavyLoad<std::string, std::string>(queuesNum, valsPerQueue);
+        TestHeavyLoadAverage<std::string, std::string>(
+            queuesNum,
+            valsPerQueue,
+            runs);
     }
 
-    BOOST_TEST_MESSAGE("Ints:");
+    BOOST_TEST_MESSAGE("Unsigned 64 bit integers:, " << runs << " runs:");
     for (size_t queuesNum : queueNums)
     {
-        TestHeavyLoad<int, int>(queuesNum, valsPerQueue);
+        TestHeavyLoadAverage<uint64_t, uint64_t>(queuesNum, valsPerQueue, runs);
     }
 }
 
 BOOST_AUTO_TEST_CASE(MultiQueueAsyncProcessor_HeavyLoad_ValsPerQueueNumGrowth)
 {
+    uint64_t runs{ GetTestParams().PerfAvgRuns() };
     constexpr size_t queuesNum{ 100 };
 
     // 5.000.000/10.000.000/15.000.000 total enqueues
     auto valsPerQueues = { 50000, 100000, 150000 };
 
-    BOOST_TEST_MESSAGE("Strings:");
+    BOOST_TEST_MESSAGE("Strings, " << runs << " runs:");
     for (size_t valsPerQueue : valsPerQueues)
     {
-        TestHeavyLoad<std::string, std::string>(queuesNum, valsPerQueue);
+        TestHeavyLoadAverage<std::string, std::string>(
+            queuesNum,
+            valsPerQueue,
+            runs);
     }
 
-    BOOST_TEST_MESSAGE("Ints:");
+    BOOST_TEST_MESSAGE("Unsigned 64 bit integers:, " << runs << " runs:");
     for (size_t valsPerQueue : valsPerQueues)
     {
-        TestHeavyLoad<int, int>(queuesNum, valsPerQueue);
+        TestHeavyLoadAverage<uint64_t, uint64_t>(queuesNum, valsPerQueue, runs);
     }
 }
 

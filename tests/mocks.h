@@ -87,11 +87,12 @@ public:
         const QueueId& id,
         std::shared_ptr<IConsumer<QueueId, Value>> consumer)
     {
-        if (!m_addConsumers)
-            return false;
+        if (m_addConsumers)
+        {
+            m_consumers[id] = std::move(consumer);
+        }
 
-        m_consumers[id] = std::move(consumer);
-        return true;
+        return m_addConsumers;
     }
 
     void RemoveConsumer(const QueueId& id)
