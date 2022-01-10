@@ -22,7 +22,7 @@ constexpr QueueId operator "" _Id(unsigned long long val) noexcept
     return val;
 }
 
-void RequireDequeueEq(
+inline void RequireDequeueEq(
     Queue& queue,
     Value valueRef,
     const std::shared_ptr<MockConsumer>& consumerRef)
@@ -45,7 +45,7 @@ void RequireConsumedEq(
     BOOST_REQUIRE_EQUAL(consumed.second, refVal);
 }
 
-auto CreateProcessorAndMockQueueManager(size_t threadsNum)
+inline auto CreateProcessorAndMockQueueManager(size_t threadsNum)
 {
     auto queueManager{ std::make_unique<MockQueueManager>() };
     auto dispatcherPtr{ queueManager.get() };

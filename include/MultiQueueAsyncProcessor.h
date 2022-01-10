@@ -104,8 +104,11 @@ public:
 private:
     struct QueueData
     {
+        using DispatchQueueIt =
+            typename std::list<std::shared_ptr<QueueType>>::iterator;
+
         std::shared_ptr<QueueType> queue;
-        typename std::list<std::shared_ptr<QueueType>>::iterator dispatchQueueIt;
+        std::optional<DispatchQueueIt> dispatchQueueIt;
     };
 
 public:
@@ -131,8 +134,7 @@ public:
         if (!data.queue->Enqueue(std::forward<T>(value)))
             return false;
 
-        if (data.queue->HasConsumer() &&
-            data.dispatchQueueIt == m_queuesToDispatch.end())
+        if (data.dispatchQueueIt && data.queue->HasConsumer())
         {
             AddToDispatchQueue(data);
         }
@@ -229,8 +231,8 @@ private:
     {
         if (data.dispatchQueueIt != m_queuesToDispatch.end())
         {
-            m_queuesToDispatch.erase(data.dispatchQueueIt);
-            data.dispatchQueueIt = m_queuesToDispatch.end();
+            m_queuesToDispatch.erase(*data.dispatchQueueIt);
+            data.dispatchQueueIt.reset();
         }
     }
 
@@ -324,8 +326,6 @@ private:
         {
             thread.join();
         }
-
-        m_workers.clear();
     }
 
     std::optional<std::shared_ptr<typename QueuesManager::QueueType>>
